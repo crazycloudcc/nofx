@@ -557,7 +557,8 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 		}
 
 		if d.Leverage <= 0 || d.Leverage > maxLeverage {
-			return fmt.Errorf("杠杆必须在1-%d之间（%s，当前配置上限%d倍）: %d", maxLeverage, d.Symbol, maxLeverage, d.Leverage)
+			d.Leverage = maxLeverage // 自动调整为最大杠杆
+			// return fmt.Errorf("杠杆必须在1-%d之间（%s，当前配置上限%d倍）: %d", maxLeverage, d.Symbol, maxLeverage, d.Leverage)
 		}
 		if d.PositionSizeUSD <= 0 {
 			return fmt.Errorf("仓位大小必须大于0: %.2f", d.PositionSizeUSD)
@@ -586,15 +587,18 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 			}
 		}
 
-		// 验证风险回报比（必须≥1:3）
+		// 验证风险回报比（RR必须≥1:2）
+		rrValue := 2.0
+		// 假设在33%位置入场
+		tmpValue := 1.0 / 3.0
 		// 计算入场价（假设当前市价）
 		var entryPrice float64
 		if d.Action == "open_long" {
 			// 做多：入场价在止损和止盈之间
-			entryPrice = d.StopLoss + (d.TakeProfit-d.StopLoss)*0.2 // 假设在20%位置入场
+			entryPrice = d.StopLoss + (d.TakeProfit-d.StopLoss)*tmpValue
 		} else {
 			// 做空：入场价在止损和止盈之间
-			entryPrice = d.StopLoss - (d.StopLoss-d.TakeProfit)*0.2 // 假设在20%位置入场
+			entryPrice = d.StopLoss - (d.StopLoss-d.TakeProfit)*tmpValue
 		}
 
 		var riskPercent, rewardPercent, riskRewardRatio float64
@@ -612,10 +616,10 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 			}
 		}
 
-		// 硬约束：风险回报比必须≥3.0
-		if riskRewardRatio < 3.0 {
-			return fmt.Errorf("风险回报比过低(%.2f:1)，必须≥3.0:1 [风险:%.2f%% 收益:%.2f%%] [止损:%.2f 止盈:%.2f]",
-				riskRewardRatio, riskPercent, rewardPercent, d.StopLoss, d.TakeProfit)
+		// 硬约束：风险回报比必须≥rrValue
+		if riskRewardRatio < rrValue {
+			return fmt.Errorf("风险回报比过低(%.2f:1)，必须≥%.1f:1 [风险:%.2f%% 收益:%.2f%%] [止损:%.2f 止盈:%.2f]",
+				riskRewardRatio, rrValue, riskPercent, rewardPercent, d.StopLoss, d.TakeProfit)
 		}
 	}
 
